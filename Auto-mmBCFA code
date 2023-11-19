@@ -1,0 +1,205 @@
+def GetCorrectValue(fKey, sPectrum):
+    sTrue1 = " " + str(int(fKey) - 43)
+    sTrue2 = " " + str(int(fKey) - 57)
+    if sPectrum.find(sTrue1) != -1:
+        sCorrect = sPectrum.split(sTrue1)[1].split(" ")[0]
+        fNum1 = float(sCorrect.split(":")[1])
+    if sPectrum.find(sTrue2) != -1:
+        sCorrect = sPectrum.split(sTrue2)[1].split(" ")[0]
+        fNum2 = float(sCorrect.split(":")[1])
+    return fNum1 / fNum2
+
+
+def CreateExcel(iSheetIndex, sSaveSheet):
+    import xlrd
+    oExcel1 = xlrd.open_workbook("D:/ID.xls")
+    oSheet1 = oExcel1.sheets()[iSheetIndex]
+    lList1 = oSheet1.col_values(16)  # 16 represents EI spectrum column
+    del lList1[0]
+
+    oExcel2 = xlrd.open_workbook("D:/chain length.xls")
+    oSheet2 = oExcel2.sheets()[0]
+    lList2 = oSheet2.col_values(1)  # 1 represents M column
+    del lList2[0]
+    dMap = {}
+    dRT = {}
+    dName2Value = {}
+    for iIndex in range(len(lList2)):
+        dMap[lList2[iIndex]] = oSheet2.cell_value(iIndex + 1, 0)
+        dRT[oSheet2.cell_value(iIndex + 1, 0)] = oSheet2.cell_value(iIndex + 1, 2).split('-')
+        dName2Value[oSheet2.cell_value(iIndex + 1, 0)] = lList2[iIndex]
+    print(dMap)
+    print(dRT)
+    print(dName2Value)
+
+    iNum = 1
+    d = {}
+    dTest = {}
+    for str1 in lList1:
+        iNum += 1
+        d[iNum] = []
+        dTest[iNum] = []
+        for str2 in lList2:
+            sTrue = " " + str(int(str2))
+            if str1.find(sTrue) != -1:
+                sCorrect = str1.split(sTrue)[1].split(" ")[0]
+                fNum = float(sCorrect.split(":")[1])
+                if fNum >= 100.0:  # Threshold value
+                    d[iNum].append(str2)
+                    dTest[iNum].append([fNum, str2])
+            else:
+                pass
+        if not d[iNum]:
+            del d[iNum]
+        if not dTest[iNum]:
+            del dTest[iNum]
+
+    import xlwt
+    oWork = xlwt.Workbook('utf-8')
+    oSheet = oWork.add_sheet(sSaveSheet)
+    i = 1
+    for iIndex in d.keys():
+        for xxx in d[iIndex]:
+            lData = oSheet1.row_values(iIndex - 1)
+            lData.insert(0, dMap[xxx])
+            iLen = len(lData)
+            for j in range(iLen):
+                oSheet.write(i, j, lData[j])
+            i += 1
+    oWork.save("D:/ID-test.xls")
+
+    dData = []
+    oExcelTest = xlrd.open_workbook("D:/ID-test.xls")
+    oSheetTest = oExcelTest.sheets()[0]
+    lListTest = oSheetTest.col_values(2)
+    del lListTest[0]
+    iRows = oSheetTest.nrows - 1
+    for iRow in range(iRows):
+        iCur = iRow + 1
+        sName = oSheetTest.cell_value(iCur, 0)
+        fAverage = float(oSheetTest.cell_value(iCur, 3))
+        fModelMz = float(oSheetTest.cell_value(iCur, 6))
+        lArea = dRT[sName]
+        if float(lArea[0]) <= fAverage <= float(lArea[1]) and fModelMz == 74.0:
+            dData.append(oSheetTest.row_values(iCur))
+    print(dData)
+
+    oWork = xlwt.Workbook('utf-8')
+    oSheet = oWork.add_sheet(sSaveSheet)
+    i = 0
+    for iLen in range(len(dData)):
+        for j in range(len(dData[iLen])):
+            oSheet.write(i, j, dData[iLen][j])
+        i += 1
+    oWork.save("D:/ID-test.xls")
+
+    dCorMap = {}
+    lName = []
+    oExcelTest1 = xlrd.open_workbook("D:/ID-test.xls")
+    oSheetTest1 = oExcelTest1.sheets()[0]
+    iCurRows = oSheetTest1.nrows
+    for iIndex in range(iCurRows):
+        sName = oSheetTest1.cell_value(iIndex, 0)
+        if sName not in dCorMap:
+            dCorMap[sName] = []
+        dCorMap[sName].append(iIndex)
+    for sKey, lKey in dCorMap.items():
+        if len(lKey) == 1:
+            lName.append(sKey)
+        elif len(lKey) == 2:
+            dTemp = {}
+            lTemp = []
+            for iKey in lKey:
+                fNum = GetCorrectValue(float(dName2Value[sKey]), oSheetTest1.cell_value(iKey, 17))
+                dTemp[iKey] = fNum
+                lTemp.append(fNum)
+            a = sorted(lTemp)
+            lFinalName = ["%s", "iso-%s"]
+            for iKey in lKey:
+                sName = lFinalName[a.index(dTemp[iKey])] % sKey
+                lName.append(sName)
+        elif len(lKey) == 3:
+            dTemp = {}
+            lTemp = []
+            for iKey in lKey:
+                fNum = GetCorrectValue(float(dName2Value[sKey]), oSheetTest1.cell_value(iKey, 17))
+                dTemp[iKey] = fNum
+                lTemp.append(fNum)
+            a = sorted(lTemp)
+            lFinalName = ["anteiso-%s", "%s", "iso-%s"]
+            for iKey in lKey:
+                sName = lFinalName[a.index(dTemp[iKey])] % sKey
+                lName.append(sName)
+
+    oWorkFinal = xlwt.Workbook('utf-8')
+    oSheetFinal = oWorkFinal.add_sheet(sSaveSheet)
+    i = 1
+    lTitle = oSheet1.row_values(0)
+    lTitle.insert(1, "命名")
+    for iTitle in range(len(lTitle)):
+        oSheetFinal.write(0, iTitle, lTitle[iTitle])
+    for iLength in range(len(dData)):
+        dData[iLength].insert(1, lName[iLength])
+    for iLen in range(len(dData)):
+        for j in range(len(dData[iLen])):
+            oSheetFinal.write(i, j, dData[iLen][j])
+        i += 1
+    oWorkFinal.save("D:/IDTest.xls")
+
+    dFinalData = {}
+    print(dData)
+    for lList in dData:
+        sName = lList[0]
+        fValue = dName2Value[sName]
+        sTrue = " " + str(int(fValue))
+        sCorrect = lList[18].split(sTrue)[1].split(" ")[0]
+        fNum = float(sCorrect.split(":")[1])
+        dFinalData[lList[1]] = fNum
+    return dFinalData
+
+
+if __name__ == "__main__":
+    import xlwt
+
+    lSheetName = ["ID1", "ID2", "ID3", "ID4", "ID5", "ID6","ID7", "ID8", "ID9", "ID10"]
+    dSheet1 = CreateExcel(0,"ID1")
+    dSheet2 = CreateExcel(1,"ID2")
+    dSheet3 = CreateExcel(2,"ID3")
+    dSheet4 = CreateExcel(3,"ID4")
+    dSheet5 = CreateExcel(4,"ID5")
+    dSheet6 = CreateExcel(5,"ID6")
+    dSheet7 = CreateExcel(6,"ID7")
+    dSheet8 = CreateExcel(7,"ID8")
+    dSheet9 = CreateExcel(8,"ID9")
+    dSheet10 = CreateExcel(9,"ID10")
+
+
+    print(dSheet5)
+    print(dSheet6)
+    dNew = {}
+    for dKey in [dSheet1, dSheet2, dSheet3, dSheet4, dSheet5, dSheet6,dSheet7, dSheet8, dSheet9, dSheet10]:
+        for iKey in dKey.keys():
+            # print(iKey)
+            if iKey in dNew:
+                continue
+            dNew[iKey] = []
+
+    for dKey in [dSheet1, dSheet2, dSheet3, dSheet4, dSheet5, dSheet6,dSheet7, dSheet8, dSheet9, dSheet10]:
+        for sKey in dNew:
+            sValue = dKey.get(sKey,0)
+            if sValue:
+                dNew[sKey].append(sValue)
+            else:
+                dNew[sKey].append("NA")
+
+    oWork = xlwt.Workbook('utf-8')
+    oSheetFinal = oWork.add_sheet("sheet")
+    for iSheetName in range(len(lSheetName)):
+        oSheetFinal.write(0, iSheetName+1, lSheetName[iSheetName])
+    i = 1
+    for iKey in dNew.keys():
+        oSheetFinal.write(i, 0, iKey)
+        for iRow in range(len(dNew[iKey])):
+            oSheetFinal.write(i, iRow + 1, dNew[iKey][iRow])
+        i += 1
+    oWork.save("D:/ID-Final.xls")
